@@ -180,7 +180,7 @@ def inverse_warp(img, depth, pose, intrinsics, rotation_mode='euler', padding_mo
 
     rot, tr = proj_cam_to_src_pixel[:,:,:3], proj_cam_to_src_pixel[:,:,-1:]
     src_pixel_coords = cam2pixel(cam_coords, rot, tr)  # [B,H,W,2]
-    projected_img = F.grid_sample(img, src_pixel_coords, padding_mode=padding_mode, align_corners=True)
+    projected_img = F.grid_sample(img, src_pixel_coords, padding_mode=padding_mode)
 
     valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
 
@@ -214,7 +214,7 @@ def inverse_warp2(img, depth, pose_mat, intrinsics, rotation_mode='euler', paddi
 
     rot, tr = proj_cam_to_src_pixel[:,:,:3], proj_cam_to_src_pixel[:,:,-1:]
     src_pixel_coords = cam2pixel(cam_coords, rot, tr)  # [B,H,W,2]
-    projected_img = F.grid_sample(img, src_pixel_coords, padding_mode=padding_mode, align_corners=True)
+    projected_img = F.grid_sample(img, src_pixel_coords, padding_mode=padding_mode)
 
     valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
 
