@@ -2,7 +2,7 @@ from __future__ import division
 import torch
 from torch import nn
 import torch.nn.functional as F
-from inverse_warp import inverse_warp
+from inverse_warp import inverse_warp, inverse_warp2, pose_vec2mat
 
 def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
                                     depth, explainability_mask, pose,
@@ -54,6 +54,80 @@ def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
         warped_results.append(warped)
         diff_results.append(diff)
     return total_loss, warped_results, diff_results
+
+
+def consistency_loss(tgt_img, ref_imgs, intrinsics,
+                     depth, explainability_mask, pose,
+                     rotation_mode='euler', padding_mode='zeros'):
+    """
+    Consistency loss between the first and third image. Adapted from photometric_reconstruction_loss.
+    """
+    def one_scale(depth, explainability_mask):
+        assert(explainability_mask is None or depth.size()[2:] == explainability_mask.size()[2:])
+        assert(pose.size(1) == len(ref_imgs))
+
+        consistency_loss = 0
+        b, _, h, w = depth.size()
+        downscale = tgt_img.size(2)/h
+
+        second_img_scaled = F.interpolate(tgt_img, (h, w), mode='area')
+        ref_imgs_scaled = [F.interpolate(ref_img, (h, w), mode='area') for ref_img in ref_imgs]
+        intrinsics_scaled = torch.cat((intrinsics[:, 0:2]/downscale, intrinsics[:, 2:]), dim=1) # why did we do this?
+
+        warped_imgs = []
+        diff_maps = []
+
+        pose_second_to_first = pose[:, 0]
+        pose_second_to_third = pose[:, 1]
+
+        homo_arr = torch.tensor([0, 0, 0, 1]).repeat(pose_second_to_first.size(0), 1, 1)  # B x 1 x 4
+
+        T_second_to_first = pose_vec2mat(pose_second_to_first)
+
+        # Compute the rotation and translation from I1 to I2
+        rot_mat = torch.transpose(T_second_to_first[:, :3, :3], 1, 2) # transpose the rotation matrix
+        translation = - rot_mat @ T_second_to_first[:, 3 :3].unsqueeze(-1) # B x 3 x 1
+
+        # Transformation matrix from I1 to I2
+        T_first_to_second = torch.cat([rot_mat, translation], dim=2)  # B x 3 x 4
+        T_first_to_second = torch.cat([T_first_to_second, homo_arr], dim=1) # B x 4 x 4
+
+        # Transformation matrix from I2 to I3
+        T_second_to_third = pose_vec2mat(pose_second_to_third) # B x 3 x 4
+        T_second_to_third = torch.cat([T_second_to_third, homo_arr], dim=1) # B x 4 x 4
+
+        # Convert back to a desired 3 x 4 matrix
+        T_pose_first_to_third = T_first_to_second @ T_second_to_third # B x 4 x 4
+        T_pose_first_to_third[:, :3, 3] = T_pose_first_to_third[:, :3, 3] / T_pose_first_to_third[:, 3, 3]
+        T_pose_first_to_third = T_pose_first_to_third[:, :3, :] # B x 3 x 4
+
+        # extract the pose vector from the transformation matrix;
+        ref_img_warped, valid_points = inverse_warp2(ref_imgs[2], depth[:, 0], T_pose_first_to_third,
+                                                    intrinsics_scaled,
+                                                    rotation_mode, padding_mode)
+        diff = (ref_imgs[0] - ref_img_warped) * valid_points.unsqueeze(1).float()
+        consistency_loss = diff.abs().mean()
+
+        assert((consistency_loss == consistency_loss).item() == 1)
+        warped_imgs.append(ref_img_warped[0])
+        diff_maps.append(diff[0])
+
+        return consistency_loss, warped_imgs, diff_maps
+
+    warped_results, diff_results = [], []
+    if type(explainability_mask) not in [tuple, list]:
+        explainability_mask = [explainability_mask]
+    if type(depth) not in [list, tuple]:
+        depth = [depth]
+
+    total_loss = 0
+    for d, mask in zip(depth, explainability_mask):
+        loss, warped, diff = one_scale(d, mask)
+        total_loss += loss
+        warped_results.append(warped)
+        diff_results.append(diff)
+    return total_loss, warped_results, diff_results
+
 
 def explainability_loss(mask):
     if type(mask) not in [tuple, list]:

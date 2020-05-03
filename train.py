@@ -11,7 +11,7 @@ import custom_transforms
 import models
 from utils import tensor2array, save_checkpoint, save_path_formatter, log_output_tensorboard
 
-from loss_functions import photometric_reconstruction_loss, explainability_loss, smooth_loss, compute_errors
+from loss_functions import consistency_loss, photometric_reconstruction_loss, explainability_loss, smooth_loss, compute_errors
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
@@ -271,8 +271,8 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
         depth = [1/disp for disp in disparities]
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
-        print("The size of the pose is: %s" % (pose.shape))
-        print("The length of reference image is: %s" % (pose.shape))
+        # print("The size of the pose is: %s" % (pose.shape,))
+        # print("The length of reference image is: %s" % (len(ref_imgs).shape,))
 
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
                                                                depth, explainability_mask, pose,
@@ -282,7 +282,9 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
         else:
             loss_2 = 0
         loss_3 = smooth_loss(depth)
-        loss_4 = 0
+        loss_4, _, _ = consistency_loss(tgt_img, ref_imgs, intrinsics,
+                                                               depth, explainability_mask, pose,
+                                                               args.rotation_mode, args.padding_mode)
         loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4
 
         if log_losses:
@@ -362,7 +364,10 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
             loss_2 = 0
         loss_3 = smooth_loss(depth).item()
 
-        loss_4 = 0
+        loss_4, _, _ = consistency_loss(tgt_img, ref_imgs,
+                                        intrinsics, depth,
+                                        explainability_mask, pose,
+                                        args.rotation_mode, args.padding_mode)
 
         if log_outputs and i < sample_nb_to_log - 1:  # log first output of first batches
             if epoch == 0:
