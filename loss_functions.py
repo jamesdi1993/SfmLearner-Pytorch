@@ -80,14 +80,14 @@ def consistency_loss(tgt_img, ref_imgs, intrinsics,
         pose_second_to_first = pose[:, 0]
         pose_second_to_third = pose[:, 1]
 
-        homo_arr = torch.tensor([0, 0, 0, 1]).repeat(pose_second_to_first.size(0), 1, 1)  # B x 1 x 4
+        homo_arr = torch.tensor([0, 0, 0, 1]).repeat(pose_second_to_first.size(0), 1, 1).cuda()  # B x 1 x 4
 
         T_second_to_first = pose_vec2mat(pose_second_to_first)
 
         # Compute the rotation and translation from I1 to I2
         rot_mat = torch.transpose(T_second_to_first[:, :3, :3], 1, 2) # transpose the rotation matrix
-        translation = - rot_mat @ T_second_to_first[:, 3 :3].unsqueeze(-1) # B x 3 x 1
-
+        translation = - rot_mat @ T_second_to_first[:, :3, 3].unsqueeze(-1)  # B x 3 x 1
+        
         # Transformation matrix from I1 to I2
         T_first_to_second = torch.cat([rot_mat, translation], dim=2)  # B x 3 x 4
         T_first_to_second = torch.cat([T_first_to_second, homo_arr], dim=1) # B x 4 x 4
