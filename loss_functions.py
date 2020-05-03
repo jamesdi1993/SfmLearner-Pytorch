@@ -80,7 +80,7 @@ def consistency_loss(tgt_img, ref_imgs, intrinsics,
         pose_second_to_first = pose[:, 0]
         pose_second_to_third = pose[:, 1]
 
-        homo_arr = torch.tensor([0, 0, 0, 1]).repeat(pose_second_to_first.size(0), 1, 1).cuda()  # B x 1 x 4
+        homo_arr = torch.tensor([0, 0, 0, 1]).repeat(pose_second_to_first.size(0), 1, 1).float().cuda()  # B x 1 x 4
 
         T_second_to_first = pose_vec2mat(pose_second_to_first)
 
@@ -98,14 +98,14 @@ def consistency_loss(tgt_img, ref_imgs, intrinsics,
 
         # Convert back to a desired 3 x 4 matrix
         T_pose_first_to_third = T_first_to_second @ T_second_to_third # B x 4 x 4
-        T_pose_first_to_third[:, :3, 3] = T_pose_first_to_third[:, :3, 3] / T_pose_first_to_third[:, 3, 3]
+        # T_pose_first_to_third[:, :3, 3] = T_pose_first_to_third[:, :3, 3] / T_pose_first_to_third[:, 3, 3]
         T_pose_first_to_third = T_pose_first_to_third[:, :3, :] # B x 3 x 4
 
         # extract the pose vector from the transformation matrix;
-        ref_img_warped, valid_points = inverse_warp2(ref_imgs[2], depth[:, 0], T_pose_first_to_third,
+        ref_img_warped, valid_points = inverse_warp2(ref_imgs_scaled[1], depth[:, 0], T_pose_first_to_third,
                                                     intrinsics_scaled,
                                                     rotation_mode, padding_mode)
-        diff = (ref_imgs[0] - ref_img_warped) * valid_points.unsqueeze(1).float()
+        diff = (ref_imgs_scaled[0] - ref_img_warped) * valid_points.unsqueeze(1).float()
         consistency_loss = diff.abs().mean()
 
         assert((consistency_loss == consistency_loss).item() == 1)

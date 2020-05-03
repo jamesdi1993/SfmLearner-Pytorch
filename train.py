@@ -387,7 +387,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
                                                             disp_unraveled.max(-1)[0]]).numpy()
 
         loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4
-        losses.update([loss, loss_1, loss_2])
+        losses.update([loss, loss_1, loss_2, loss_4])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
