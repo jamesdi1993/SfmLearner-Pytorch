@@ -4,7 +4,6 @@ from torch import nn
 import torch.nn.functional as F
 from inverse_warp import inverse_warp
 
-
 def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
                                     depth, explainability_mask, pose,
                                     rotation_mode='euler', padding_mode='zeros'):
@@ -55,7 +54,6 @@ def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
         warped_results.append(warped)
         diff_results.append(diff)
     return total_loss, warped_results, diff_results
-
 
 def explainability_loss(mask):
     if type(mask) not in [tuple, list]:

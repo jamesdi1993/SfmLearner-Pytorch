@@ -64,6 +64,7 @@ parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH
 parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
 parser.add_argument('-m', '--mask-loss-weight', type=float, help='weight for explainabilty mask loss', metavar='W', default=0)
 parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
+parser.add_argument('-t', '--consistency-loss-weight', type=float, help='weight for consistency loss', metavar='W', default=0.1)
 parser.add_argument('--log-output', action='store_true', help='will log dispnet outputs and warped imgs at validation step')
 parser.add_argument('-f', '--training-output-freq', type=int,
                     help='frequence for outputting dispnet outputs and warped imgs at training for all scales if 0 will not output',
@@ -246,7 +247,7 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter(precision=4)
-    w1, w2, w3 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight
+    w1, w2, w3, w4 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight, args.consistency_loss_weight
 
     # switch to train mode
     disp_net.train()
@@ -270,6 +271,9 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
         depth = [1/disp for disp in disparities]
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
+        print("The size of the pose is: %s" % (pose.shape))
+        print("The length of reference image is: %s" % (pose.shape))
+
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
                                                                depth, explainability_mask, pose,
                                                                args.rotation_mode, args.padding_mode)
@@ -278,14 +282,15 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
         else:
             loss_2 = 0
         loss_3 = smooth_loss(depth)
-
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+        loss_4 = 0
+        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4
 
         if log_losses:
             tb_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
             if w2 > 0:
                 tb_writer.add_scalar('explanability_loss', loss_2.item(), n_iter)
             tb_writer.add_scalar('disparity_smoothness_loss', loss_3.item(), n_iter)
+            tb_writer.add_scalar('consistency_loss', loss_4, n_iter)
             tb_writer.add_scalar('total_loss', loss.item(), n_iter)
 
         if log_output:
@@ -323,9 +328,9 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
 def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer, sample_nb_to_log=3):
     global device
     batch_time = AverageMeter()
-    losses = AverageMeter(i=3, precision=4)
+    losses = AverageMeter(i=4, precision=4)
     log_outputs = sample_nb_to_log > 0
-    w1, w2, w3 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight
+    w1, w2, w3, w4 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight, args.consistency_loss_weight
     poses = np.zeros(((len(val_loader)-1) * args.batch_size * (args.sequence_length-1),6))
     disp_values = np.zeros(((len(val_loader)-1) * args.batch_size * 3))
 
@@ -357,6 +362,8 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
             loss_2 = 0
         loss_3 = smooth_loss(depth).item()
 
+        loss_4 = 0
+
         if log_outputs and i < sample_nb_to_log - 1:  # log first output of first batches
             if epoch == 0:
                 for j,ref in enumerate(ref_imgs):
@@ -374,7 +381,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
                                                             disp_unraveled.median(-1)[0],
                                                             disp_unraveled.max(-1)[0]]).numpy()
 
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4
         losses.update([loss, loss_1, loss_2])
 
         # measure elapsed time
